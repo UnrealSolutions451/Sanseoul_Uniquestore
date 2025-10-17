@@ -160,21 +160,22 @@
       transition: background 0.3s;
     }
     #logoutBtn:hover { background: #a71d2a; }
-      .footer {
-  background: #f9f9f9;
-  color: #000000;
-  text-align: center;
-  padding: 10px 16px;
-  font-size: 0.97rem;
-  font-weight: 450;
-  border-top: 1px solid #ddd;
-}
-.footer a {
-  color: #292929;
-  font-weight: 600;
-  text-decoration: none;
-}
-.footer a:hover { text-decoration: underline; }
+
+    .footer {
+      background: #f9f9f9;
+      color: #000000;
+      text-align: center;
+      padding: 10px 16px;
+      font-size: 0.97rem;
+      font-weight: 450;
+      border-top: 1px solid #ddd;
+    }
+    .footer a {
+      color: #292929;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
 
     .admin-nav {
       background: var(--primary, #03045e);
@@ -231,22 +232,32 @@
       .nav-links.show { display: flex; }
       .nav-toggle { display: block; }
     }
+    .logo {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      max-height: 30px;
+      height: auto;
+      width: auto;
+    }
   </style>
-
 </head>
+
 <body>
   <script type="module" src="auth-guard.js"></script>
   <header>Admin Dashboard 
+    <img src="Sanseoul.png" alt="Logo" class="logo">
     <div class="logout-container">
       <button id="logoutBtn">Logout</button>
     </div>
   </header>
+
   <nav class="admin-nav">
     <div class="nav-container">
       <div class="nav-logo">Sanseoul</div>
       <button class="nav-toggle" id="navToggle">☰</button>
       <ul class="nav-links" id="navLinks">
-        <li><a href="admin-dashboard.html">Dashboard</a></li>
+        <li><a href="admin-dashboard.html" class="active">Dashboard</a></li>
         <li><a href="analytics.html">Analytics</a></li>
         <li><a href="stock-manager.html">Stock Manager</a></li>
         <li><a href="index.html">Order panel</a></li>
@@ -260,7 +271,6 @@
       <div class="stat-box" id="todaySales">Today's Sales: ₹0</div>
       <div class="stat-box" id="monthSales">This Month's Sales: ₹0</div>
       <div class="stat-box" id="totalSales">Total Sales: ₹0</div>
-      <!-- <div class="stat-box" id="distributorPay">Sanseoul Payment (Month): ₹0</div> -->
       <div class="stat-box" id="balanceBox">Balance: ₹0</div>
     </div>
 
@@ -286,167 +296,128 @@
   <div id="toast"></div>
 
   <script type="module">
-  import { db, auth } from "./firebase-config.js";
-  import { 
-    collection, query, orderBy, onSnapshot, 
-    doc, setDoc, updateDoc, increment, getDoc, serverTimestamp 
-  } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-  import { signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+    import { db, auth } from "./firebase-config.js";
+    import { 
+      collection, query, orderBy, onSnapshot, 
+      doc, setDoc, updateDoc, increment, getDoc, serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
-  const ordersDiv = document.getElementById("orders");
-  const filterSelect = document.getElementById("filter");
-  const todaySalesEl = document.getElementById("todaySales");
-  const monthSalesEl = document.getElementById("monthSales");
-  const totalSalesEl = document.getElementById("totalSales");
-  const distributorPayEl = document.getElementById("distributorPay");
-  const balanceBoxEl = document.getElementById("balanceBox");
-  const orderCountEl = document.getElementById("orderCount");
+    const ordersDiv = document.getElementById("orders");
+    const filterSelect = document.getElementById("filter");
+    const todaySalesEl = document.getElementById("todaySales");
+    const monthSalesEl = document.getElementById("monthSales");
+    const totalSalesEl = document.getElementById("totalSales");
+    const balanceBoxEl = document.getElementById("balanceBox");
+    const orderCountEl = document.getElementById("orderCount");
 
-  let unsubscribeOrders = null;
+    let unsubscribeOrders = null;
 
-  function highlightStatBox(box) {
-    document.querySelectorAll(".stat-box").forEach(el => el.classList.remove("active"));
-    if (box) box.classList.add("active");
-  }
+    function highlightStatBox(box) {
+      document.querySelectorAll(".stat-box").forEach(el => el.classList.remove("active"));
+      if (box) box.classList.add("active");
+    }
 
-  function loadOrders() {
-    const filterValue = filterSelect.value;
-    const todayDate = new Date().toISOString().split("T")[0];
-    const currentMonth = todayDate.slice(0, 7);
+    function loadOrders() {
+      const filterValue = filterSelect.value;
+      const todayDate = new Date().toISOString().split("T")[0];
+      const currentMonth = todayDate.slice(0, 7);
 
-    if (unsubscribeOrders) unsubscribeOrders();
+      if (unsubscribeOrders) unsubscribeOrders();
 
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-    unsubscribeOrders = onSnapshot(q, async snapshot => {
-      let allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      let filteredOrders = [];
-      let todaySales = 0;
-      let monthSales = 0;
-      let totalSales = 0;
-      let distributorPayMonth = 0;
+      const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+      unsubscribeOrders = onSnapshot(q, async snapshot => {
+        let allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let filteredOrders = [];
+        let todaySales = 0;
+        let monthSales = 0;
+        let totalSales = 0;
 
-      // Increment balance for new orders
-      snapshot.docChanges().forEach(async change => {
-        if (change.type === "added") {
-          const order = change.doc.data();
-          const orderId = change.doc.id;
+        // Aggregate stats
+        allOrders.forEach(order => {
+          const orderDateObj = order.createdAt?.toDate ? order.createdAt.toDate() : null;
+          if (!orderDateObj) return;
 
-          if (!order.balanceUpdated) {
-            let spriceTotal = 0;
+          const yyyyMMDD = orderDateObj.toISOString().split("T")[0];
+          const yyyyMM = yyyyMMDD.slice(0, 7);
 
-            for (const item of (order.items || [])) {
-              const sprice = item.sprice || 0;
-              const qty = item.quantity || 1;
-              spriceTotal += sprice * qty;
-            }
+          const total = order.totalAmount || 0;
 
-            if (spriceTotal > 0) {
-              const payRef = doc(db, "payments", "sanseoul");
-              await updateDoc(payRef, { balance: increment(spriceTotal) });
-              await updateDoc(doc(db, "orders", orderId), { balanceUpdated: true });
-            }
+          if(order.status === "completed") {
+            totalSales += total;
+            if (yyyyMM === currentMonth) monthSales += total;
+            if (yyyyMMDD === todayDate) todaySales += total;
           }
-        }
+        });
+
+        // Filter orders
+        filteredOrders = allOrders.filter(order => {
+          const orderDateObj = order.createdAt?.toDate ? order.createdAt.toDate() : null;
+          if (!orderDateObj) return false;
+          const yyyyMMDD = orderDateObj.toISOString().split("T")[0];
+          const yyyyMM = yyyyMMDD.slice(0, 7);
+
+          if (filterValue === "today" && yyyyMMDD !== todayDate) return false;
+          if (filterValue === "month" && yyyyMM !== currentMonth) return false;
+          if (filterValue === "completed" && order.status !== "completed") return false;
+          if (filterValue === "pending" && !["pending","accepted"].includes(order.status)) return false;
+          return true;
+        });
+
+        // Render orders
+        ordersDiv.innerHTML = filteredOrders.length
+          ? filteredOrders.map(order => {
+              const d = order.createdAt?.toDate ? order.createdAt.toDate() : null;
+              const dateStr = d ? d.toLocaleDateString() : "-";
+              const timeStr = d ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "-";
+              const total = order.totalAmount || 0;
+              return `
+                <div class="order">
+                  <p><strong>Items:</strong> ${(order.items || []).map(i => `${i.name} x ${i.quantity||1}`).join(", ")}</p>
+                  <p><strong>Total:</strong> ₹${total}</p>
+                  <p><strong>Status:</strong> ${order.status || "-"}</p>
+                  <p><strong>Date:</strong> ${dateStr} <strong>Time:</strong> ${timeStr}</p>
+                </div>`;
+            }).join("")
+          : "<p>No orders found.</p>";
+
+        // Update UI
+        orderCountEl.textContent = `Showing ${filteredOrders.length} order${filteredOrders.length!==1?"s":""}`;
+        todaySalesEl.textContent = `Today's Sales: ₹${todaySales}`;
+        monthSalesEl.textContent = `This Month's Sales: ₹${monthSales}`;
+        totalSalesEl.textContent = `Total Sales: ₹${totalSales}`;
+
+        // Fetch balance
+        const paySnap = await getDoc(doc(db, "payments", "sanseoul"));
+        const balanceVal = paySnap.exists() ? (paySnap.data().balance || 0) : 0;
+        balanceBoxEl.textContent = `Balance: ₹${balanceVal}`;
+
+        await setDoc(doc(db, "payments", "sanseoul"), {
+          todaySales, monthSales, totalSales,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
       });
+    }
 
-      // Aggregate stats
-      allOrders.forEach(order => {
-        const orderDateObj = order.createdAt?.toDate ? order.createdAt.toDate() : null;
-        if (!orderDateObj) return;
+    // Event listeners
+    filterSelect.addEventListener("change", () => { highlightStatBox(null); loadOrders(); });
+    todaySalesEl.addEventListener("click", () => { filterSelect.value="today"; highlightStatBox(todaySalesEl); loadOrders(); });
+    monthSalesEl.addEventListener("click", () => { filterSelect.value="month"; highlightStatBox(monthSalesEl); loadOrders(); });
+    totalSalesEl.addEventListener("click", () => { filterSelect.value="all"; highlightStatBox(totalSalesEl); loadOrders(); });
 
-        const yyyyMMDD = orderDateObj.toISOString().split("T")[0];
-        const yyyyMM = yyyyMMDD.slice(0, 7);
-
-        const total = order.totalAmount || 0;
-        const spriceTotal = (order.items || []).reduce((sum, i) => sum + ((i.sprice||0)*(i.quantity||1)), 0);
-
-        if(order.status === "completed") {
-          totalSales += total;
-          if (yyyyMM === currentMonth) {
-            monthSales += total;
-            distributorPayMonth += spriceTotal;
-          }
-          if (yyyyMMDD === todayDate) todaySales += total;
-        }
-      });
-
-      // Filter orders
-      filteredOrders = allOrders.filter(order => {
-        const orderDateObj = order.createdAt?.toDate ? order.createdAt.toDate() : null;
-        if (!orderDateObj) return false;
-        const yyyyMMDD = orderDateObj.toISOString().split("T")[0];
-        const yyyyMM = yyyyMMDD.slice(0, 7);
-
-        if (filterValue === "today" && yyyyMMDD !== todayDate) return false;
-        if (filterValue === "month" && yyyyMM !== currentMonth) return false;
-        if (filterValue === "completed" && order.status !== "completed") return false;
-        if (filterValue === "pending" && !["pending","accepted"].includes(order.status)) return false;
-        return true;
-      });
-
-      // Render
-      ordersDiv.innerHTML = filteredOrders.length
-        ? filteredOrders.map(order => {
-            const d = order.createdAt?.toDate ? order.createdAt.toDate() : null;
-            const dateStr = d ? d.toLocaleDateString() : "-";
-            const timeStr = d ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "-";
-            const total = order.totalAmount || 0;
-            return `
-              <div class="order">
-                <p><strong>Items:</strong> ${(order.items || []).map(i => `${i.name} x ${i.quantity||1}`).join(", ")}</p>
-                <p><strong>Total:</strong> ₹${total}</p>
-                <p><strong>Status:</strong> ${order.status || "-"}</p>
-                <p><strong>Date:</strong> ${dateStr} <strong>Time:</strong> ${timeStr}</p>
-              </div>`;
-          }).join("")
-        : "<p>No orders found.</p>";
-
-      // Update UI
-      orderCountEl.textContent = `Showing ${filteredOrders.length} order${filteredOrders.length!==1?"s":""}`;
-      todaySalesEl.textContent = `Today's Sales: ₹${todaySales}`;
-      monthSalesEl.textContent = `This Month's Sales: ₹${monthSales}`;
-      totalSalesEl.textContent = `Total Sales: ₹${totalSales}`;
-      distributorPayEl.textContent = `Sanseoul Payment (Month): ₹${distributorPayMonth}`;
-
-      // Fetch balance
-      const paySnap = await getDoc(doc(db, "payments", "sanseoul"));
-      const balanceVal = paySnap.exists() ? (paySnap.data().balance || 0) : 0;
-      balanceBoxEl.textContent = `Balance: ₹${balanceVal}`;
-
-      await setDoc(doc(db, "payments", "sanseoul"), {
-        todaySales, monthSales, totalSales,
-        distributorPayMonth,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      const currentPage = encodeURIComponent(window.location.pathname);
+      await signOut(auth);
+      window.location.href = `login.html?redirect=${currentPage}`;
     });
-  }
 
-  // Event listeners
-  filterSelect.addEventListener("change", () => { highlightStatBox(null); loadOrders(); });
-  todaySalesEl.addEventListener("click", () => { filterSelect.value="today"; highlightStatBox(todaySalesEl); loadOrders(); });
-  monthSalesEl.addEventListener("click", () => { filterSelect.value="month"; highlightStatBox(monthSalesEl); loadOrders(); });
-  totalSalesEl.addEventListener("click", () => { filterSelect.value="all"; highlightStatBox(totalSalesEl); loadOrders(); });
-  distributorPayEl.addEventListener("click", () => { filterSelect.value="completed"; highlightStatBox(distributorPayEl); loadOrders(); });
+    document.getElementById("navToggle").addEventListener("click", () =>
+      document.getElementById("navLinks").classList.toggle("show")
+    );
 
-  document.getElementById("logoutBtn").addEventListener("click", async () => {
-    const currentPage = encodeURIComponent(window.location.pathname);
-    await signOut(auth);
-    window.location.href = `login.html?redirect=${currentPage}`;
-  });
-
-  document.getElementById("navToggle").addEventListener("click", () =>
-    document.getElementById("navLinks").classList.toggle("show")
-  );
-
-  loadOrders();
+    loadOrders();
   </script>
-  <footer class="footer">
-  <p>
-    Developed by 
-    <a href="https://unrealsolutions.pages.dev" target="_blank" rel="noopener noreferrer">UnrealSolutions</a> 
-    | Contact: <a href="mailto:info.unrealsolutions@gmail.com">info.unrealsolutions@gmail.com</a> | +91-7507374446 | +91-9529102559
-  </p>
-</footer>
+
+  
 </body>
 </html>
-

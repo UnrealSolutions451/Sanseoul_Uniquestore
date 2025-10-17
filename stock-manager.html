@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -41,7 +41,7 @@
     }
     h2 { margin-bottom: 12px; font-size: 1.2rem; }
 
-    input, button {
+    input, button, select {
       padding: 8px 12px;
       border: 1px solid #ccc;
       border-radius: 8px;
@@ -133,7 +133,6 @@
     .paid { color: var(--success); font-weight: bold; }
     .unpaid { color: var(--danger); font-weight: bold; }
 
-    /* Size buttons */
     .size-options {
       display: flex;
       gap: 10px;
@@ -154,28 +153,37 @@
       background: var(--secondary);
       color: white;
     }
-      .footer {
-  background: #f9f9f9;
-  color: #000000;
-  text-align: center;
-  padding: 10px 16px;
-  font-size: 0.97rem;
-  font-weight: 450;
-  border-top: 1px solid #ddd;
-}
-.footer a {
-  color: #292929;
-  font-weight: 600;
-  text-decoration: none;
-}
-.footer a:hover { text-decoration: underline; }
+    .footer {
+      background: #f9f9f9;
+      color: #000000;
+      text-align: center;
+      padding: 10px 16px;
+      font-size: 0.97rem;
+      font-weight: 450;
+      border-top: 1px solid #ddd;
+    }
+    .footer a {
+      color: #292929;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
 
+    .logo {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      max-height: 30px;
+      height: auto;
+      width: auto;
+    }
   </style>
 </head>
 
 <body>
   <script type="module" src="auth-guard.js"></script>
   <header>
+    <img src="Sanseoul.png" alt="Logo" class="logo">
     Stock Manager
     <div class="logout-container">
       <button id="logoutBtn">Logout</button>
@@ -203,6 +211,11 @@
         <input type="date" id="date">
         <input type="text" id="article" placeholder="Article" required>
 
+        <!-- Design Dropdown -->
+        <select id="designDropdown" required>
+          <option value="">Select Design</option>
+        </select>
+
         <div class="size-options" id="sizeOptions">
           <div class="size-btn" data-size="S">S</div>
           <div class="size-btn" data-size="M">M</div>
@@ -226,6 +239,7 @@
         <thead>
           <tr>
             <th>Article</th>
+            <th>Design</th>
             <th>Size</th>
             <th>Added Quantity</th>
             <th>Current Quantity</th>
@@ -245,7 +259,6 @@
   </main>
 
   <script>
-    // Toggle mobile nav
     document.getElementById("navToggle").onclick = () => {
       document.getElementById("navLinks").classList.toggle("show");
     };
@@ -258,13 +271,24 @@
   <!-- Firebase -->
   <script type="module">
     import { db, auth } from "./firebase-config.js";
-    import { collection, orderBy, query, onSnapshot, updateDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+    import { collection, orderBy, query, onSnapshot, updateDoc, doc, getDoc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
     import { signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
     const stockForm = document.getElementById("stockForm");
     const inventoryList = document.getElementById("inventoryList");
     const todayDate = new Date().toISOString().split("T")[0];
     document.getElementById("date").value = todayDate;
+
+    // Load designs
+    const designDropdown = document.getElementById("designDropdown");
+    const designSnap = await getDocs(collection(db, "design"));
+    designSnap.forEach(docSnap => {
+      const d = docSnap.data();
+      const opt = document.createElement("option");
+      opt.value = d.name || docSnap.id;
+      opt.textContent = d.name || docSnap.id;
+      designDropdown.appendChild(opt);
+    });
 
     // Size selection
     let selectedSize = null;
@@ -281,6 +305,7 @@
     stockForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const article = document.getElementById("article").value.trim();
+      const design = designDropdown.value;
       const addedQty = parseInt(document.getElementById("quantity").value);
       const price = parseFloat(document.getElementById("price").value);
       const sprice = parseFloat(document.getElementById("sprice").value);
@@ -290,8 +315,12 @@
         alert("Please select a size!");
         return;
       }
+      if (!design) {
+        alert("Please select a design!");
+        return;
+      }
 
-      const docId = `${article}_${selectedSize}`;
+      const docId = `${article}_${design}_${selectedSize}`;
       const invRef = doc(db, "Inventory", docId);
       const snap = await getDoc(invRef);
 
@@ -307,7 +336,8 @@
         });
       } else {
         await setDoc(invRef, {
-          article: `${article} (${selectedSize})`,
+          article,
+          design,
           size: selectedSize,
           addedQuantity: addedQty,
           cumulativeAdded: addedQty,
@@ -319,10 +349,11 @@
       // Save to menu collection (for store panel)
       const menuRef = doc(db, "menu", docId);
       await setDoc(menuRef, {
-        name: `${article} (${selectedSize})`,   // ✅ name includes size now
+        name: `${article} (${selectedSize})`,
+        design,
         size: selectedSize,
-        price: price,
-        sprice: sprice,
+        price,
+        sprice,
         category: "sanseoul",
         available: true
       });
@@ -335,7 +366,7 @@
 
     // Load inventory
     const invQ = query(collection(db, "Inventory"), orderBy("date", "desc"));
-    onSnapshot(invQ, async snapshot => {
+    onSnapshot(invQ, snapshot => {
       const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       inventoryList.innerHTML = items.map(item => {
         const statusClass = (item.currentQuantity < 10) ? "status-low" : "status-ok";
@@ -343,6 +374,7 @@
         return `
           <tr>
             <td>${item.article}</td>
+            <td>${item.design || "-"}</td>
             <td>${item.size || "-"}</td>
             <td>${item.addedQuantity || 0}</td>
             <td>${item.currentQuantity || 0}</td>
@@ -353,7 +385,7 @@
       }).join("");
     });
 
-    // Fetch distributorPay live
+    // Fetch payment
     const payRef = doc(db, "payments", "sanseoul");
     onSnapshot(payRef, (snap) => {
       if (snap.exists()) {
@@ -374,7 +406,7 @@
       }
     });
   </script>
+
   
 </body>
 </html>
-

@@ -168,6 +168,15 @@
   text-decoration: none;
 }
 .footer a:hover { text-decoration: underline; }
+.logo {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      max-height: 30px;
+      height: auto;
+      width: auto;
+    }
+
 
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -177,6 +186,7 @@
 <body>
   <script type="module" src="auth-guard.js"></script>
   <header>
+    <img src="Sanseoul.png" alt="Logo" class="logo">
     Analytics Dashboard
     <div class="logout-container">
       <button id="logoutBtn">Logout</button>
@@ -321,12 +331,6 @@
       inventoryChart.update();
     });
   </script>
-  <footer class="footer">
-  <p>
-    Developed by 
-    <a href="https://unrealsolutions.pages.dev" target="_blank" rel="noopener noreferrer">UnrealSolutions</a> 
-    | Contact: <a href="mailto:info.unrealsolutions@gmail.com">info.unrealsolutions@gmail.com</a> | +91-7507374446 | +91-9529102559
-  </p>
-</footer>
+  
 </body>
 </html>

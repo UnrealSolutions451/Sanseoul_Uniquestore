@@ -124,12 +124,25 @@
   border-top: 1px solid #ddd;
 }
 .footer a {
-  color: #292929;
+  color: #FF6400;
   font-weight: 600;
   text-decoration: none;
 }
 .footer a:hover { text-decoration: underline; }
-
+.logo {
+      position: absolute;
+      left: 20px;
+      max-height: 30px;
+      height: auto;
+      width: auto;
+    }
+    .logol {
+      position: absolute;
+      right: 140px;
+      max-height: 70px;
+      height: auto;
+      width: auto;
+    }
   </style>
 </head>
 <body>
@@ -137,7 +150,9 @@
   <script type="module" src="auth-guard.js"></script>
 
   <header>
+    <img src="Sanseoul.png" alt="Logo" class="logo">
     <h1>Store Sales Panel</h1>
+    <img src="Unique-front.png" alt="Logo" class="logol">
     <div class="logout-container">
       <button id="logoutBtn" class="logout-btn">Logout</button>
     </div>
@@ -193,66 +208,79 @@
   <div id="invoicePrint" style="display:none;"></div>
 
   <script type="module">
-    import { auth, db } from "./firebase-config.js";
-    import { signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
-    import {
-      collection, query, onSnapshot, getDocs, addDoc, doc, deleteDoc, serverTimestamp, where, updateDoc
-    } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+import { auth, db } from "./firebase-config.js";
+import { signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+import {
+  collection, query, onSnapshot, getDocs, addDoc, doc, deleteDoc, serverTimestamp, where, updateDoc
+} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
-    // Logout
-    document.getElementById("logoutBtn").addEventListener("click", async () => {
-      try {
-        await signOut(auth);
-        window.location.href = "login.html";
-      } catch (e) {
-        console.error(e);
-      }
-    });
+// Logout
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  try {
+    await signOut(auth);
+    window.location.href = "login.html";
+  } catch (e) {
+    console.error(e);
+  }
+});
 
-    const menuList = document.getElementById("menuList");
-    const selectedItemsDiv = document.getElementById("selectedItems");
-    const toast = document.getElementById("toast");
-    const runningTotalEl = document.getElementById("runningTotal");
-    const ordersDiv = document.getElementById("orders");
-    const toggleMenuBtn = document.getElementById("toggleMenu");
-    const clearSelectionBtn = document.getElementById("clearSelection");
-    const placeOrderBtn = document.getElementById("placeOrderBtn");
-    const paymentMethodEl = document.getElementById("paymentMethod");
+const menuList = document.getElementById("menuList");
+const selectedItemsDiv = document.getElementById("selectedItems");
+const toast = document.getElementById("toast");
+const runningTotalEl = document.getElementById("runningTotal");
+const ordersDiv = document.getElementById("orders");
+const toggleMenuBtn = document.getElementById("toggleMenu");
+const clearSelectionBtn = document.getElementById("clearSelection");
+const placeOrderBtn = document.getElementById("placeOrderBtn");
+const paymentMethodEl = document.getElementById("paymentMethod");
 
-    let menuItemsLoaded = [];
+let menuItemsLoaded = [];
+let groupedItems = {}; // new: grouped by name
+let selectedDesigns = {}; // name → selected design ID
 
-    function showToast(msg) {
-      toast.textContent = msg;
-      toast.classList.add("show");
-      setTimeout(()=> toast.classList.remove("show"), 1400);
-    }
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add("show");
+  setTimeout(()=> toast.classList.remove("show"), 1400);
+}
 
-    // Toggle menu panel
-    toggleMenuBtn.addEventListener("click", () => {
-      menuList.style.display = menuList.style.display === "flex" ? "none" : "flex";
-    });
-    clearSelectionBtn.addEventListener("click", resetSelectionUI);
+// Toggle menu panel
+toggleMenuBtn.addEventListener("click", () => {
+  menuList.style.display = menuList.style.display === "flex" ? "none" : "flex";
+});
+clearSelectionBtn.addEventListener("click", resetSelectionUI);
 
-    // Load menu items from Firestore
-    // Load menu items from Firestore
+// Load menu items from Firestore
 async function loadMenu(){
   menuList.innerHTML = "";
   menuItemsLoaded = [];
+  groupedItems = {};
   const snap = await getDocs(collection(db, "menu"));
   snap.forEach(docSnap=>{
     const data = docSnap.data();
     const id = docSnap.id;
+    const name = data.name.trim();
+    if(!groupedItems[name]) groupedItems[name] = [];
+    groupedItems[name].push({
+      id,
+      name,
+      price: Number(data.price||0),
+      sprice: Number(data.sprice||0),
+      design: data.design || "Default"
+    });
+  });
+
+  Object.keys(groupedItems).forEach(name=>{
+    const designs = groupedItems[name];
+    const main = designs[0];
     const row = document.createElement("div");
     row.className = "menu-item";
     row.innerHTML = `
       <label style="flex:1">
-        <input type="checkbox" 
-          data-id="${id}" 
-          data-name="${escapeHtml(data.name)}" 
-          data-price="${Number(data.price||0)}"
-          data-sprice="${Number(data.sprice||0)}"> 
-        ${escapeHtml(data.name)} (₹${Number(data.price||0)})
+        <input type="checkbox" data-name="${escapeHtml(name)}" data-price="${main.price}" data-sprice="${main.sprice}">
+        ${escapeHtml(name)} (₹${main.price})
       </label>
+      ${designs.length > 1 ? `<button class="select-design-btn" type="button" style="background:#f5f5f5;border:1px solid #ccc;border-radius:4px;padding:4px 8px;">Select Design</button>` : ""}
       <div style="display:flex;align-items:center;gap:8px;">
         <input type="number" class="price-override" placeholder="₹ price" />
         <div class="qty-control" aria-hidden="false">
@@ -263,7 +291,6 @@ async function loadMenu(){
       </div>
     `;
 
-    // attach behavior
     const cb = row.querySelector("input[type=checkbox]");
     const dec = row.querySelector(".dec");
     const inc = row.querySelector(".inc");
@@ -283,282 +310,371 @@ async function loadMenu(){
     cb.addEventListener("change", () => updateSelectedPreview());
     override.addEventListener("input", () => updateSelectedPreview());
 
-    menuList.appendChild(row);
+    const selectBtn = row.querySelector(".select-design-btn");
+    if(selectBtn){
+      selectBtn.addEventListener("click", () => openDesignPopup(name, designs));
+    }
 
-    menuItemsLoaded.push({
-      id, 
-      name: data.name, 
-      price: Number(data.price||0),
-      sprice: Number(data.sprice||0)   // keep track
-    });
+    menuList.appendChild(row);
+    menuItemsLoaded.push(...designs);
   });
 }
 
-    // escape small HTML to avoid injection in innerHTML usage
-    function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Popup for design selection
+function openDesignPopup(name, designs){
+  const overlay = document.createElement("div");
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.background = "rgba(0,0,0,0.45)";
+  overlay.style.display = "flex";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+  overlay.style.zIndex = "999";
 
-    // Update selected preview cards & running total
-    function updateSelectedPreview(){
-      selectedItemsDiv.innerHTML = "";
-      let total = 0;
-      const checked = menuList.querySelectorAll("input[type=checkbox]:checked");
-      checked.forEach(cb=>{
-        const row = cb.closest(".menu-item");
-        const id = cb.dataset.id;
-        const name = cb.dataset.name;
-        const defaultPrice = Number(cb.dataset.price || 0);
-        const overrideVal = row.querySelector(".price-override").value;
-        const price = (overrideVal !== "") ? Number(overrideVal || 0) : defaultPrice;
-        const qty = Number(row.querySelector(".qty-value").textContent || 1);
-        total += price * qty;
+  const popup = document.createElement("div");
+  popup.style.background = "#fff";
+  popup.style.padding = "20px";
+  popup.style.borderRadius = "10px";
+  popup.style.boxShadow = "0 0 15px rgba(0,0,0,0.3)";
+  popup.style.maxWidth = "320px";
+  popup.style.width = "90%";
+  popup.innerHTML = `
+    <h3 style="margin-bottom:10px;">Select Design for ${escapeHtml(name)}</h3>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${designs.map(d=>`
+        <button class="design-option" data-id="${d.id}" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#f9f9f9;">
+          ${escapeHtml(d.design)} — ₹${d.price}
+        </button>
+      `).join("")}
+    </div>
+    <div style="text-align:right;margin-top:12px;">
+      <button id="closeDesignPopup" style="background:#333;color:#fff;padding:6px 12px;border:none;border-radius:6px;">Close</button>
+    </div>
+  `;
 
-        const card = document.createElement("div");
-        card.className = "selected-card";
-        card.innerHTML = `<div style="display:flex;flex-direction:column;gap:4px;"><span>${name} × ${qty}</span><small style="color:#666">₹${price} each</small></div><div style="display:flex;gap:8px;align-items:center;"><strong>₹${price*qty}</strong><button class="remove-btn" aria-label="remove item">Remove</button></div>`;
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
 
-        card.querySelector(".remove-btn").addEventListener("click", () => {
-          cb.checked = false;
-          // reset qty & override for that item
-          row.querySelector(".qty-value").textContent = "1";
-          row.querySelector(".price-override").value = "";
-          updateSelectedPreview();
-        });
+  popup.querySelectorAll(".design-option").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.id;
+      selectedDesigns[name] = id;
+      showToast(`Selected ${btn.textContent.trim()}`);
+      document.body.removeChild(overlay);
+      updateSelectedPreview();
+    });
+  });
 
-        selectedItemsDiv.appendChild(card);
-      });
-      runningTotalEl.textContent = `₹${total}`;
-    }
+  popup.querySelector("#closeDesignPopup").addEventListener("click", ()=>{
+    document.body.removeChild(overlay);
+  });
+}
 
-    function resetSelectionUI(){
-      // hide menu
-      menuList.style.display = "none";
-      // clear selections
-      menuList.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
-      menuList.querySelectorAll(".qty-value").forEach(q => q.textContent = "1");
-      menuList.querySelectorAll(".price-override").forEach(i => i.value = "");
-      selectedItemsDiv.innerHTML = "";
-      runningTotalEl.textContent = "₹0";
-      paymentMethodEl.value = "";
-    }
+// escape HTML
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-    // Record Sale
-    // Record Sale + update Inventory
-    placeOrderBtn.addEventListener("click", async () => {
-      const checked = Array.from(menuList.querySelectorAll("input[type=checkbox]:checked"));
-      if (!checked.length) { alert("Select at least one item"); return; }
-      if (!paymentMethodEl.value) { alert("Select payment method"); return; }
+// Update selected preview cards & running total
+function updateSelectedPreview(){
+  selectedItemsDiv.innerHTML = "";
+  let total = 0;
+  const checked = menuList.querySelectorAll("input[type=checkbox]:checked");
+  checked.forEach(cb=>{
+    const row = cb.closest(".menu-item");
+    const name = cb.dataset.name;
+    const selectedId = selectedDesigns[name] || (groupedItems[name]?.[0]?.id || "");
+    const itemData = menuItemsLoaded.find(i=>i.id===selectedId) || {};
+    const defaultPrice = Number(cb.dataset.price || itemData.price || 0);
+    const overrideVal = row.querySelector(".price-override").value;
+    const price = (overrideVal !== "") ? Number(overrideVal || 0) : defaultPrice;
+    const qty = Number(row.querySelector(".qty-value").textContent || 1);
+    total += price * qty;
 
-      const items = checked.map(cb => {
-        const row = cb.closest(".menu-item");
-        const defaultPrice = Number(cb.dataset.price || 0);
-        const overrideVal = row.querySelector(".price-override").value;
-        const price = (overrideVal !== "") ? Number(overrideVal || 0) : defaultPrice;
-        const qty = Number(row.querySelector(".qty-value").textContent || 1);
-        const sprice = Number(cb.dataset.sprice || 0);
-        return { id: cb.dataset.id, name: cb.dataset.name, price, sprice, quantity: qty };
-      });
+    const card = document.createElement("div");
+    card.className = "selected-card";
+    card.innerHTML = `<div style="display:flex;flex-direction:column;gap:4px;">
+        <span>${name} ${itemData.design ? `(${itemData.design})` : ""} × ${qty}</span>
+        <small style="color:#666">₹${price} each</small></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <strong>₹${price*qty}</strong>
+        <button class="remove-btn" aria-label="remove item">Remove</button>
+      </div>`;
 
-      const total = items.reduce((s,i) => s + (i.price * i.quantity), 0);
-      const orderCode = "ORD-" + String(Math.floor(Math.random()*9000)+1000);
-
-      await addDoc(collection(db, "orders"), {
-        orderCode,
-        items,
-        totalAmount: total,
-        paymentStatus: "paid",
-        status: "completed",
-        paymentMethod: paymentMethodEl.value,
-        createdAt: serverTimestamp()
-      });
-
-      // 🔽 Update Inventory quantities
-      for (const it of items) {
-      const invQuery = query(collection(db,"Inventory"), where("article","==",it.name));
-      const snap = await getDocs(invQuery);
-      for (const invDoc of snap.docs) {
-        const invRef = doc(db, "Inventory", invDoc.id);
-        const current = invDoc.data().currentQuantity || 0;
-        const newQty = Math.max(0, current - it.quantity);
-        await updateDoc(invRef, { currentQuantity: newQty });
-      }
-    }
-
-      showToast("Sale recorded & inventory updated");
-      resetSelectionUI();
+    card.querySelector(".remove-btn").addEventListener("click", () => {
+      cb.checked = false;
+      row.querySelector(".qty-value").textContent = "1";
+      row.querySelector(".price-override").value = "";
+      delete selectedDesigns[name];
+      updateSelectedPreview();
     });
 
+    selectedItemsDiv.appendChild(card);
+  });
+  runningTotalEl.textContent = `₹${total}`;
+}
 
-    // History: only today's sales
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", today));
-    onSnapshot(ordersQuery, (snap) => {
-      const list = [];
-      snap.forEach(docSnap=>{
-        const data = docSnap.data();
-        data.id = docSnap.id;
-        list.push(data);
-      });
-      // sort most recent first
-      list.sort((a,b)=> (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-      renderOrders(list);
+function resetSelectionUI(){
+  menuList.style.display = "none";
+  menuList.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+  menuList.querySelectorAll(".qty-value").forEach(q => q.textContent = "1");
+  menuList.querySelectorAll(".price-override").forEach(i => i.value = "");
+  selectedItemsDiv.innerHTML = "";
+  runningTotalEl.textContent = "₹0";
+  paymentMethodEl.value = "";
+  selectedDesigns = {};
+}
+
+// Record Sale + update Inventory
+placeOrderBtn.addEventListener("click", async () => {
+  const checked = Array.from(menuList.querySelectorAll("input[type=checkbox]:checked"));
+  if (!checked.length) { alert("Select at least one item"); return; }
+  if (!paymentMethodEl.value) { alert("Select payment method"); return; }
+
+  const items = checked.map(cb => {
+    const row = cb.closest(".menu-item");
+    const name = cb.dataset.name;
+    const selectedId = selectedDesigns[name] || (groupedItems[name]?.[0]?.id || "");
+    const itemData = menuItemsLoaded.find(i=>i.id===selectedId) || {};
+    const defaultPrice = Number(cb.dataset.price || itemData.price || 0);
+    const overrideVal = row.querySelector(".price-override").value;
+    const price = (overrideVal !== "") ? Number(overrideVal || 0) : defaultPrice;
+    const qty = Number(row.querySelector(".qty-value").textContent || 1);
+    const sprice = Number(cb.dataset.sprice || itemData.sprice || 0);
+    return { id: selectedId, name, design: itemData.design || "Default", price, sprice, quantity: qty };
+  });
+
+  const total = items.reduce((s,i) => s + (i.price * i.quantity), 0);
+  const orderCode = "ORD-" + String(Math.floor(Math.random()*9000)+1000);
+
+  await addDoc(collection(db, "orders"), {
+    orderCode,
+    items,
+    totalAmount: total,
+    paymentStatus: "paid",
+    status: "completed",
+    paymentMethod: paymentMethodEl.value,
+    createdAt: serverTimestamp()
+  });
+
+  // Update Inventory
+  for (const it of items) {
+    const invQuery = query(collection(db,"Inventory"), where("article","==",it.name));
+    const snap = await getDocs(invQuery);
+    for (const invDoc of snap.docs) {
+      const invRef = doc(db, "Inventory", invDoc.id);
+      const current = invDoc.data().currentQuantity || 0;
+      const newQty = Math.max(0, current - it.quantity);
+      await updateDoc(invRef, { currentQuantity: newQty });
+    }
+  }
+
+  showToast("Sale recorded & inventory updated");
+  resetSelectionUI();
+});
+
+// ---- Existing order display & print code below (made safe) ----
+const today = new Date();
+today.setHours(0,0,0,0);
+const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", today));
+onSnapshot(ordersQuery, (snap) => {
+  const list = [];
+  snap.forEach(docSnap=>{
+    const data = docSnap.data();
+    data.id = docSnap.id;
+    list.push(data);
+  });
+  list.sort((a,b)=> (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+  renderOrders(list);
+});
+
+function renderOrders(orders){
+  ordersDiv.innerHTML = "";
+  if (!orders.length) {
+    ordersDiv.innerHTML = `<div class="order-card"><p style="color:#666">No sales today.</p></div>`;
+    return;
+  }
+  orders.forEach(order=>{
+    const itemsText = (order.items || []).map(it => `${it.name}${it.design ? "("+it.design+")" : ""} x ${it.quantity}`).join(", ");
+    const total = order.totalAmount || (order.items || []).reduce((s,i)=>s+(i.price*(i.quantity||1)),0);
+    const orderForPrint = {
+      id: order.id,
+      orderCode: order.orderCode,
+      items: order.items || [],
+      totalAmount: total,
+      paymentMethod: order.paymentMethod || "cash",
+      paymentStatus: order.paymentStatus || "paid",
+      createdAtMillis: order.createdAt?.toMillis?.() || Date.now()
+    };
+
+    // Build card DOM safely (no inline onclick)
+    const card = document.createElement("div");
+    card.className = "order-card";
+
+    const innerHTML = `
+      <div class="order-head">
+        <div>
+          <div class="order-id">${order.orderCode || "-"}</div>
+          <div style="font-size:.9rem;color:#666">Items: ${order.items?.length || 0}</div>
+        </div>
+        <div><span class="status">${order.paymentMethod || "Paid"}</span></div>
+      </div>
+
+      <div class="order-body">
+        <p><strong>Items:</strong> ${itemsText || "-"}</p>
+        <p><strong>Total:</strong> ₹${total}</p>
+        <p style="font-size:0.85rem;color:#666;margin-top:6px;">
+          <strong>Date:</strong> ${order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleString() : "N/A"}
+        </p>
+      </div>
+    `;
+    card.innerHTML = innerHTML;
+
+    const actions = document.createElement("div");
+    actions.className = "order-actions";
+
+    const printBtn = document.createElement("button");
+    printBtn.className = "btn btn-print";
+    printBtn.type = "button";
+    printBtn.textContent = "🖨 Print Invoice";
+    printBtn.addEventListener("click", () => {
+      // Call printInvoice with an object (safer than embedding in HTML)
+      printInvoice(orderForPrint);
     });
 
-    function renderOrders(orders){
-      ordersDiv.innerHTML = "";
-      if (!orders.length) {
-        ordersDiv.innerHTML = `<div class="order-card"><p style="color:#666">No sales today.</p></div>`;
-        return;
-      }
-      orders.forEach(order=>{
-        const itemsText = (order.items || []).map(it => `${it.name} x ${it.quantity}`).join(", ");
-        const total = order.totalAmount || (order.items || []).reduce((s,i)=>s+(i.price*(i.quantity||1)),0);
-
-        // prepare a serializable copy for print (convert createdAt to millis)
-        const orderForPrint = {
-          id: order.id,
-          orderCode: order.orderCode,
-          items: order.items || [],
-          totalAmount: total,
-          paymentMethod: order.paymentMethod || "cash",
-          paymentStatus: order.paymentStatus || "paid",
-          createdAtMillis: order.createdAt?.toMillis?.() || Date.now()
-        };
-        const encoded = encodeURIComponent(JSON.stringify(orderForPrint));
-
-        const card = document.createElement("div");
-        card.className = "order-card";
-        card.innerHTML = `
-          <div class="order-head">
-            <div>
-              <div class="order-id">${order.orderCode || "-"}</div>
-              <div style="font-size:.9rem;color:#666">Items: ${order.items?.length || 0}</div>
-            </div>
-            <div><span class="status">${order.paymentMethod || "Paid"}</span></div>
-          </div>
-
-          <div class="order-body">
-            <p><strong>Items:</strong> ${itemsText || "-"}</p>
-            <p><strong>Total:</strong> ₹${total}</p>
-            <p style="font-size:0.85rem;color:#666;margin-top:6px;">
-              <strong>Date:</strong> ${order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleString() : "N/A"}
-            </p>
-          </div>
-
-          <div class="order-actions">
-            <button class="btn btn-print" onclick="printInvoice('${encoded}')">🖨 Print Invoice</button>
-            <button class="btn btn-ghost" onclick="deleteOrder('${order.id}')">Delete</button>
-          </div>
-        `;
-        ordersDiv.appendChild(card);
-      });
-    }
-
-    // delete
-    window.deleteOrder = async function(id){
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn btn-ghost";
+    delBtn.type = "button";
+    delBtn.textContent = "Delete";
+    delBtn.addEventListener("click", async () => {
       if(!confirm("Delete sale?")) return;
       try {
-        await deleteDoc(doc(db,"orders",id));
+        await deleteDoc(doc(db,"orders",order.id));
         showToast("Sale deleted");
       } catch (e) { console.error(e); showToast("Delete failed"); }
-    };
+    });
 
-    // Print Invoice
-    window.printInvoice = function(orderEncoded){
+    actions.appendChild(printBtn);
+    actions.appendChild(delBtn);
+
+    card.appendChild(actions);
+    ordersDiv.appendChild(card);
+  });
+}
+
+// keep deleteOrder available if other parts of code call it (still works)
+window.deleteOrder = async function(id){
+  if(!confirm("Delete sale?")) return;
+  try {
+    await deleteDoc(doc(db,"orders",id));
+    showToast("Sale deleted");
+  } catch (e) { console.error(e); showToast("Delete failed"); }
+};
+
+// printInvoice now accepts either an encoded string (old) or a plain object
+window.printInvoice = function(orderEncodedOrObj){
+  try {
+    let order;
+    if (typeof orderEncodedOrObj === "string") {
+      // old behaviour: encoded string
       try {
-        const order = JSON.parse(decodeURIComponent(orderEncoded));
-        const invoiceDiv = document.getElementById("invoicePrint");
-        const createdAt = new Date(order.createdAtMillis);
-        const dateStr = createdAt.toLocaleDateString() + " " + createdAt.toLocaleTimeString();
-
-        const itemsHtml = (order.items || []).map((it, i) => {
-          const price = Number(it.price || 0);
-          const qty = Number(it.quantity || 0);
-          return `<tr>
-            <td style="border:1px solid #e2e2e2;padding:8px;text-align:center">${i+1}</td>
-            <td style="border:1px solid #e2e2e2;padding:8px">${escapeHtml(it.name)}</td>
-            <td style="border:1px solid #e2e2e2;padding:8px;text-align:center">${qty}</td>
-            <td style="border:1px solid #e2e2e2;padding:8px;text-align:right">₹${price.toFixed(2)}</td>
-            <td style="border:1px solid #e2e2e2;padding:8px;text-align:right">₹${(price*qty).toFixed(2)}</td>
-          </tr>`;
-        }).join("");
-
-        const taxVal = 0; // change if you want to calculate tax
-        const subtotal = Number(order.totalAmount || 0);
-        const taxAmount = +(subtotal * taxVal / 100).toFixed(2);
-        const grandTotal = +(subtotal + taxAmount).toFixed(2);
-
-        invoiceDiv.style.display = "block";
-        invoiceDiv.innerHTML = `
-          <div style="font-family:Inter,Segoe UI,Arial,sans-serif;max-width:760px;margin:18px auto;border:1px solid #e6e6e6;padding:22px;border-radius:10px;color:#222;background:#fff">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-              <div>
-                <h2 style="margin:0;">Unique men's Wear</h2>
-                <div style="color:#666">Roshan Gate • Aurangabad, Maharashtra,431001.</div>
-                <div style="color:#666">Phone: 9766035386</div>
-              </div>
-              <div style="text-align:right">
-                <div style="font-weight:700">INVOICE</div>
-                <div style="color:#666"># ${escapeHtml(order.orderCode || '')}</div>
-                <div style="color:#666">${dateStr}</div>
-              </div>
-            </div>
-
-            <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:14px">
-              <thead>
-                <tr style="background:#fafafa">
-                  <th style="border:1px solid #e2e2e2;padding:8px;text-align:center">#</th>
-                  <th style="border:1px solid #e2e2e2;padding:8px;text-align:left">Item</th>
-                  <th style="border:1px solid #e2e2e2;padding:8px;text-align:center">Qty</th>
-                  <th style="border:1px solid #e2e2e2;padding:8px;text-align:right">Price</th>
-                  <th style="border:1px solid #e2e2e2;padding:8px;text-align:right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHtml}
-              </tbody>
-            </table>
-
-            <div style="display:flex;justify-content:flex-end;margin-top:12px">
-              <table style="border-collapse:collapse;width:320px">
-                <tr>
-                  <td style="padding:6px 8px;color:#666">Subtotal</td>
-                  <td style="padding:6px 8px;text-align:right">₹${subtotal.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td style="padding:6px 8px;color:#666">Tax (${taxVal}%)</td>
-                  <td style="padding:6px 8px;text-align:right">₹${taxAmount.toFixed(2)}</td>
-                </tr>
-                <tr style="border-top:2px solid #eee">
-                  <td style="padding:8px 8px;font-weight:700">Grand Total</td>
-                  <td style="padding:8px 8px;text-align:right;font-weight:700">₹${grandTotal.toFixed(2)}</td>
-                </tr>
-              </table>
-            </div>
-
-            <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
-              <div style="color:#666">Payment: <strong>${escapeHtml(order.paymentMethod || '')}</strong> (${escapeHtml(order.paymentStatus || '')})</div>
-              <div style="color:#666">Thank you for your business!</div>
-            </div>
-          </div>
-        `;
-
-        // print
-        window.print();
-
-        // hide after print
-        setTimeout(()=>{ invoiceDiv.style.display = "none"; invoiceDiv.innerHTML = ""; }, 500);
-      } catch (e) {
-        console.error("printInvoice error", e);
-        showToast("Failed to generate invoice");
+        order = JSON.parse(decodeURIComponent(orderEncodedOrObj));
+      } catch (err) {
+        // maybe plain JSON (not encoded)
+        order = JSON.parse(orderEncodedOrObj);
       }
-    };
+    } else if (typeof orderEncodedOrObj === "object" && orderEncodedOrObj !== null) {
+      order = orderEncodedOrObj;
+    } else {
+      throw new Error("Unsupported order format");
+    }
 
-    // initial load
-    await loadMenu();
-    resetSelectionUI();
-  </script>
- 
+    const invoiceDiv = document.getElementById("invoicePrint");
+    if(!invoiceDiv){
+      console.error("invoicePrint element not found in DOM");
+      showToast("Invoice container missing");
+      return;
+    }
+
+    const createdAt = new Date(order.createdAtMillis);
+    const dateStr = createdAt.toLocaleDateString() + " " + createdAt.toLocaleTimeString();
+    const itemsHtml = (order.items || []).map((it, i) => {
+      const price = Number(it.price || 0);
+      const qty = Number(it.quantity || 0);
+      return `<tr>
+        <td style="border:1px solid #e2e2e2;padding:8px;text-align:center">${i+1}</td>
+        <td style="border:1px solid #e2e2e2;padding:8px">${escapeHtml(it.name)} ${it.design ? '('+escapeHtml(it.design)+')' : ''}</td>
+        <td style="border:1px solid #e2e2e2;padding:8px;text-align:center">${qty}</td>
+        <td style="border:1px solid #e2e2e2;padding:8px;text-align:right">₹${price.toFixed(2)}</td>
+        <td style="border:1px solid #e2e2e2;padding:8px;text-align:right">₹${(price*qty).toFixed(2)}</td>
+      </tr>`;
+    }).join("");
+    const taxVal = 0;
+    const subtotal = Number(order.totalAmount || 0);
+    const taxAmount = +(subtotal * taxVal / 100).toFixed(2);
+    const grandTotal = +(subtotal + taxAmount).toFixed(2);
+    invoiceDiv.style.display = "block";
+    invoiceDiv.innerHTML = `
+      <div style="font-family:Inter,Segoe UI,Arial,sans-serif;max-width:760px;margin:18px auto;border:1px solid #e6e6e6;padding:22px;border-radius:10px;color:#222;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div>
+            <h2 style="margin:0;">Unique men's Wear</h2>
+            <div style="color:#666">Roshan Gate • Aurangabad, Maharashtra,431001.</div>
+            <div style="color:#666">Phone: 9766035386</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:700">INVOICE</div>
+            <div style="color:#666"># ${escapeHtml(order.orderCode || '')}</div>
+            <div style="color:#666">${dateStr}</div>
+          </div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:14px">
+          <thead>
+            <tr style="background:#fafafa">
+              <th style="border:1px solid #e2e2e2;padding:8px;text-align:center">#</th>
+              <th style="border:1px solid #e2e2e2;padding:8px;text-align:left">Item</th>
+              <th style="border:1px solid #e2e2e2;padding:8px;text-align:center">Qty</th>
+              <th style="border:1px solid #e2e2e2;padding:8px;text-align:right">Price</th>
+              <th style="border:1px solid #e2e2e2;padding:8px;text-align:right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:12px">
+          <table style="border-collapse:collapse;width:320px">
+            <tr><td style="padding:6px 8px;color:#666">Subtotal</td><td style="padding:6px 8px;text-align:right">₹${subtotal.toFixed(2)}</td></tr>
+            <tr><td style="padding:6px 8px;color:#666">Tax (${taxVal}%)</td><td style="padding:6px 8px;text-align:right">₹${taxAmount.toFixed(2)}</td></tr>
+            <tr style="border-top:2px solid #eee"><td style="padding:8px 8px;font-weight:700">Grand Total</td><td style="padding:8px 8px;text-align:right;font-weight:700">₹${grandTotal.toFixed(2)}</td></tr>
+          </table>
+        </div>
+        <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+          <div style="color:#666">Payment: <strong>${escapeHtml(order.paymentMethod || '')}</strong> (${escapeHtml(order.paymentStatus || '')})</div>
+          <div style="color:#666">Thank you for your business!</div>
+        </div>
+      </div>
+    `;
+    window.print();
+    setTimeout(()=>{ invoiceDiv.style.display = "none"; invoiceDiv.innerHTML = ""; }, 500);
+  } catch (e) {
+    console.error("printInvoice error", e);
+    showToast("Failed to generate invoice");
+  }
+};
+
+// initial load
+await loadMenu();
+resetSelectionUI();
+</script>
+
+
+  <footer class="footer">
+  <p>
+    Developed by 
+    <a href="https://unrealsolutions.pages.dev" target="_blank" rel="noopener noreferrer">UnrealSolutions</a> 
+    | Contact: <a href="mailto:info.unrealsolutions@gmail.com">info.unrealsolutions@gmail.com</a> | +91-7507374446 | +91-9529102559
+  </p>
+</footer>
 </body>
 </html>
-
